@@ -1,0 +1,9 @@
+{
+  "colors": {
+    "ankuendigung": "800080",
+    "warnung": "ff3b30",
+    "info": "0a84ff",
+    "success": "34c759",
+    "error": "ff453a"
+  }
+}

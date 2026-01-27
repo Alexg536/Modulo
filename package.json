@@ -1,0 +1,26 @@
+{
+  "name": "modulo",
+  "version": "1.0.0",
+  "description": "Smarter tools for better servers",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alexg536/Modulo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Alexg536/Modulo/issues"
+  },
+  "homepage": "https://github.com/Alexg536/Modulo#readme",
+  "dependencies": {
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1"
+  }
+}
