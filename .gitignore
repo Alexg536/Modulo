@@ -1,2 +1,11 @@
-node_modules
+# dependencies
+node_modules/
+
+# environment
 .env
+
+# runtime data (bot data per server)
+data/
+
+# optional: logs
+*.log
