@@ -1,60 +1,49 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { getTemplate } = require("../utils/modTemplates");
-const { bumpTimeout, boardTimeout } = require("../utils/punishStore");
-const { footer } = require("../utils/branding");
+const { bumpTimeout } = require("../utils/punishStore");
+const { buildTemplateSelect } = require("../utils/templateSelect");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("timeout")
-    .setDescription("Timeout setzen")
+    .setDescription("Timeout setzen (mit Dropdown)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-
-    .addSubcommand(sub =>
-      sub.setName("set")
-        .setDescription("Timeout setzen (per Template-ID)")
-        .addUserOption(o => o.setName("user").setDescription("Mitglied").setRequired(true))
-        .addIntegerOption(o => o.setName("template").setDescription("Template-ID (type=timeout)").setRequired(true))
-    )
-    .addSubcommand(sub =>
-      sub.setName("list")
-        .setDescription("Timeout-Liste (Top)")
-    ),
+    .addUserOption(o => o.setName("user").setDescription("Mitglied").setRequired(true)),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    const guildId = interaction.guildId;
+    const target = interaction.options.getUser("user");
 
-    if (sub === "set") {
-      const user = interaction.options.getUser("user");
-      const templateId = interaction.options.getInteger("template");
-      const t = getTemplate(guildId, templateId);
+    const customId = `tmpl:timeout:${interaction.user.id}:${target.id}`;
+    const row = buildTemplateSelect(interaction.guildId, "timeout", customId, "Timeout-Vorlage auswählen");
 
-      if (!t || t.type !== "timeout") return interaction.reply({ content: "❌ Timeout-Template-ID ungültig.", flags: 64 });
+    if (!row) return interaction.reply({ content: "📭 Keine Timeout-Vorlagen vorhanden. Nutze /modtemplate add type:timeout ... minutes:60", flags: 64 });
 
-      const member = await interaction.guild.members.fetch(user.id).catch(()=>null);
-      if (!member) return interaction.reply({ content: "❌ Member nicht gefunden.", flags: 64 });
+    interaction.client.selectHandlers.set(customId, async (menuInteraction) => {
+      const [, type, modId, targetId] = menuInteraction.customId.split(":");
+      if (menuInteraction.user.id !== modId) return menuInteraction.reply({ content: "❌ Nicht dein Menü.", flags: 64 });
 
-      const ms = t.durationMinutes * 60 * 1000;
+      const templateId = parseInt(menuInteraction.values[0], 10);
+      const t = getTemplate(menuInteraction.guildId, templateId);
+      if (!t || t.type !== "timeout") return menuInteraction.reply({ content: "❌ Template ungültig.", flags: 64 });
 
-      await member.timeout(ms, t.reason).catch(err=>{
-        console.error(err);
-        throw err;
+      const member = await menuInteraction.guild.members.fetch(targetId).catch(()=>null);
+      if (!member) return menuInteraction.reply({ content: "❌ Member nicht gefunden.", flags: 64 });
+
+      const ms = (t.durationMinutes || 0) * 60 * 1000;
+      if (!ms) return menuInteraction.reply({ content: "❌ Timeout Template hat keine minutes.", flags: 64 });
+
+      await member.timeout(ms, t.reason).catch(async () => {
+        await menuInteraction.reply({ content: "❌ Timeout fehlgeschlagen (Rechte?).", flags: 64 }).catch(()=>{});
       });
 
-      bumpTimeout(guildId, user.id, { ts: Date.now(), moderatorId: interaction.user.id, reason: t.reason, templateId });
+      bumpTimeout(menuInteraction.guildId, targetId, { ts: Date.now(), moderatorId: modId, reason: t.reason, templateId });
 
-      try { await user.send(`⏳ Timeout auf **${interaction.guild.name}**\nDauer: ${t.durationMinutes} Minuten\nGrund: ${t.dmText}`); } catch {}
+      try { await target.send(`⏳ Timeout auf **${menuInteraction.guild.name}**\nDauer: ${t.durationMinutes} Minuten\n${t.dmText}`); } catch {}
 
-      return interaction.reply({ content: `✅ Timeout gesetzt: ${user} (**${t.durationMinutes}m**, Template: **${t.name}**)`, flags: 64 });
-    }
+      await menuInteraction.update({ content: `✅ Timeout gesetzt: ${target} (**${t.durationMinutes}m**, Vorlage: **${t.name}**)`, components: [] });
+      menuInteraction.client.selectHandlers.delete(customId);
+    });
 
-    if (sub === "list") {
-      const board = boardTimeout(guildId).sort((a,b)=>b.count-a.count).slice(0, 15);
-      if (!board.length) return interaction.reply({ content: "📭 Keine Timeouts gespeichert.", flags: 64 });
-
-      const lines = board.map((x,i)=>`${i+1}. <@${x.userId}> — **${x.count}**`).join("\n");
-      const e = new EmbedBuilder().setTitle("⏳ Timeout-Liste (Top 15)").setDescription(lines).setFooter(footer()).setTimestamp(new Date());
-      return interaction.reply({ embeds: [e], flags: 64 });
-    }
+    return interaction.reply({ content: `Wähle eine Timeout-Vorlage für ${target}:`, components: [row], flags: 64 });
   }
 };

@@ -1,53 +1,43 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { getTemplate } = require("../utils/modTemplates");
-const { bumpWarn, boardWarn } = require("../utils/punishStore");
-const { footer } = require("../utils/branding");
+const { bumpWarn } = require("../utils/punishStore");
+const { buildTemplateSelect } = require("../utils/templateSelect");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("warn")
-    .setDescription("Verwarnungen")
+    .setDescription("Verwarnung vergeben (mit Dropdown)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-
-    .addSubcommand(sub =>
-      sub.setName("add")
-        .setDescription("Warn hinzufügen (per Template-ID)")
-        .addUserOption(o => o.setName("user").setDescription("Mitglied").setRequired(true))
-        .addIntegerOption(o => o.setName("template").setDescription("Template-ID (type=warn)").setRequired(true))
-    )
-    .addSubcommand(sub =>
-      sub.setName("list")
-        .setDescription("Warn-Liste (Top)")
-    ),
+    .addUserOption(o => o.setName("user").setDescription("Mitglied").setRequired(true)),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    const guildId = interaction.guildId;
+    const target = interaction.options.getUser("user");
 
-    if (sub === "add") {
-      const user = interaction.options.getUser("user");
-      const templateId = interaction.options.getInteger("template");
-      const t = getTemplate(guildId, templateId);
+    const customId = `tmpl:warn:${interaction.user.id}:${target.id}`;
+    const row = buildTemplateSelect(interaction.guildId, "warn", customId, "Warn-Vorlage auswählen");
 
-      if (!t || t.type !== "warn") return interaction.reply({ content: "❌ Warn-Template-ID ungültig.", flags: 64 });
+    if (!row) return interaction.reply({ content: "📭 Keine Warn-Vorlagen vorhanden. Nutze /modtemplate add type:warn ...", flags: 64 });
 
-      // speichern count
-      bumpWarn(guildId, user.id, { ts: Date.now(), moderatorId: interaction.user.id, reason: t.reason, templateId });
+    // Handler registrieren
+    interaction.client.selectHandlers.set(customId, async (menuInteraction) => {
+      // nur der Moderator darf klicken
+      const [, type, modId, targetId] = menuInteraction.customId.split(":");
+      if (menuInteraction.user.id !== modId) return menuInteraction.reply({ content: "❌ Nicht dein Menü.", flags: 64 });
 
-      // DM
-      try { await user.send(`⚠️ Verwarnung auf **${interaction.guild.name}**\nGrund: ${t.dmText}`); } catch {}
+      const templateId = parseInt(menuInteraction.values[0], 10);
+      const t = getTemplate(menuInteraction.guildId, templateId);
+      if (!t || t.type !== "warn") return menuInteraction.reply({ content: "❌ Template ungültig.", flags: 64 });
 
-      // Response
-      return interaction.reply({ content: `✅ ${user} verwarnt (Template: **${t.name}**)`, flags: 64 });
-    }
+      bumpWarn(menuInteraction.guildId, targetId, { ts: Date.now(), moderatorId: modId, reason: t.reason, templateId });
 
-    if (sub === "list") {
-      const board = boardWarn(guildId).sort((a,b)=>b.count-a.count).slice(0, 15);
-      if (!board.length) return interaction.reply({ content: "📭 Keine Verwarnungen gespeichert.", flags: 64 });
+      try { await target.send(`⚠️ Verwarnung auf **${menuInteraction.guild.name}**\n${t.dmText}`); } catch {}
 
-      const lines = board.map((x,i)=>`${i+1}. <@${x.userId}> — **${x.count}**`).join("\n");
-      const e = new EmbedBuilder().setTitle("⚠️ Warn-Liste (Top 15)").setDescription(lines).setFooter(footer()).setTimestamp(new Date());
-      return interaction.reply({ embeds: [e], flags: 64 });
-    }
+      await menuInteraction.update({ content: `✅ ${target} verwarnt (Vorlage: **${t.name}**)`, components: [] });
+
+      // handler cleanup
+      menuInteraction.client.selectHandlers.delete(customId);
+    });
+
+    return interaction.reply({ content: `Wähle eine Warn-Vorlage für ${target}:`, components: [row], flags: 64 });
   }
 };

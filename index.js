@@ -9,39 +9,33 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,     // <- im Dev Portal aktivieren!
+    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
 client.commands = new Collection();
+client.selectHandlers = new Collection();
+client.buttonHandlers = new Collection();
 
 // Commands laden
 const commandsPath = path.join(__dirname, 'src', 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-
-  if (!command?.data?.name || typeof command.execute !== 'function') {
-    console.log(`❌ Command kaputt/leer: ${file}`);
-    continue;
-  }
-
+  const command = require(path.join(commandsPath, file));
+  if (!command?.data?.name || typeof command.execute !== 'function') continue;
   client.commands.set(command.data.name, command);
   console.log(`✅ Command geladen: ${command.data.name}`);
 }
 
-// Events laden (on/once)
+// Events laden
 const eventsPath = path.join(__dirname, 'src', 'events');
 const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
 
 for (const file of eventFiles) {
-  const filePath = path.join(eventsPath, file);
-  const event = require(filePath);
-
+  const event = require(path.join(eventsPath, file));
   if (event.once) client.once(event.name, (...args) => event.execute(...args));
   else client.on(event.name, (...args) => event.execute(...args));
 }
