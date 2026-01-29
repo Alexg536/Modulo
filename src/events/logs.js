@@ -2,10 +2,16 @@ const { AuditLogEvent, EmbedBuilder } = require("discord.js");
 const { getGuildConfig } = require("../utils/config");
 const { footer } = require("../utils/branding");
 
-function cut(s, n = 1200) {
+function cut(s, max = 1000) {
   if (!s) return "—";
   s = String(s);
-  return s.length > n ? s.slice(0, n) + "…" : s;
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function safeList(arr, maxLen = 1000) {
+  if (!arr || arr.length === 0) return "—";
+  const joined = arr.join(", ");
+  return cut(joined, maxLen);
 }
 
 async function sendTypedLog(guild, type, embed) {
@@ -24,7 +30,6 @@ module.exports = {
   name: "ready",
   once: true,
   execute(client) {
-    // JOIN
     client.on("guildMemberAdd", async (member) => {
       const e = new EmbedBuilder()
         .setTitle("✅ Join")
@@ -34,7 +39,6 @@ module.exports = {
       await sendTypedLog(member.guild, "join", e);
     });
 
-    // LEAVE / KICK (Audit log check)
     client.on("guildMemberRemove", async (member) => {
       let kickedBy = null;
       let reason = null;
@@ -51,7 +55,7 @@ module.exports = {
           .setDescription(`${member.user?.tag || member.id} (ID: \`${member.id}\`)`)
           .addFields(
             { name: "Gekickt von", value: `${kickedBy} (ID: \`${kickedBy.id}\`)`, inline: false },
-            { name: "Grund", value: reason || "—", inline: false }
+            { name: "Grund", value: cut(reason || "—", 1000), inline: false }
           )
           .setFooter(footer()).setTimestamp(new Date());
         return sendTypedLog(member.guild, "kick", e);
@@ -64,27 +68,24 @@ module.exports = {
       await sendTypedLog(member.guild, "leave", e);
     });
 
-    // ROLE UPDATE + TIMEOUT
     client.on("guildMemberUpdate", async (oldM, newM) => {
-      // roles
       const oldRoles = new Set(oldM.roles.cache.keys());
       const newRoles = new Set(newM.roles.cache.keys());
-      const added = [...newRoles].filter(r => !oldRoles.has(r));
-      const removed = [...oldRoles].filter(r => !newRoles.has(r));
+      const added = [...newRoles].filter(r => !oldRoles.has(r)).map(id => `<@&${id}>`);
+      const removed = [...oldRoles].filter(r => !newRoles.has(r)).map(id => `<@&${id}>`);
 
       if (added.length || removed.length) {
         const e = new EmbedBuilder()
           .setTitle("🧩 Role update")
           .setDescription(`${newM} (ID: \`${newM.id}\`)`)
           .addFields(
-            { name: "Hinzugefügt", value: added.length ? added.map(id => `<@&${id}>`).join(", ") : "—", inline: false },
-            { name: "Entfernt", value: removed.length ? removed.map(id => `<@&${id}>`).join(", ") : "—", inline: false }
+            { name: "Hinzugefügt", value: safeList(added), inline: false },
+            { name: "Entfernt", value: safeList(removed), inline: false }
           )
           .setFooter(footer()).setTimestamp(new Date());
         await sendTypedLog(newM.guild, "role", e);
       }
 
-      // timeout
       const o = oldM.communicationDisabledUntilTimestamp || 0;
       const n = newM.communicationDisabledUntilTimestamp || 0;
       if (o !== n) {
@@ -102,25 +103,23 @@ module.exports = {
           .addFields(
             { name: "Von", value: by ? `${by} (ID: \`${by.id}\`)` : "—", inline: false },
             { name: "Bis", value: isSet ? `<t:${Math.floor(n / 1000)}:F> (<t:${Math.floor(n / 1000)}:R>)` : "—", inline: false },
-            { name: "Grund", value: reason || "—", inline: false }
+            { name: "Grund", value: cut(reason || "—", 1000), inline: false }
           )
           .setFooter(footer()).setTimestamp(new Date());
         await sendTypedLog(newM.guild, "timeout", e);
       }
     });
 
-    // MESSAGE DELETE
     client.on("messageDelete", async (msg) => {
       if (!msg.guild || msg.author?.bot) return;
       const e = new EmbedBuilder()
         .setTitle("🗑️ Message delete")
         .setDescription(`In <#${msg.channelId}> von ${msg.author} (ID: \`${msg.author.id}\`)`)
-        .addFields({ name: "Inhalt", value: cut(msg.content, 1500), inline: false })
+        .addFields({ name: "Inhalt", value: cut(msg.content, 1000), inline: false })
         .setFooter(footer()).setTimestamp(new Date());
       await sendTypedLog(msg.guild, "msg_delete", e);
     });
 
-    // MESSAGE EDIT
     client.on("messageUpdate", async (oldMsg, newMsg) => {
       if (!newMsg.guild || newMsg.author?.bot) return;
       const before = oldMsg?.content || "";
@@ -131,14 +130,13 @@ module.exports = {
         .setTitle("✏️ Message edit")
         .setDescription(`In <#${newMsg.channelId}> von ${newMsg.author} (ID: \`${newMsg.author.id}\`)`)
         .addFields(
-          { name: "Vorher", value: cut(before, 1200), inline: false },
-          { name: "Nachher", value: cut(after, 1200), inline: false }
+          { name: "Vorher", value: cut(before, 1000), inline: false },
+          { name: "Nachher", value: cut(after, 1000), inline: false }
         )
         .setFooter(footer()).setTimestamp(new Date());
       await sendTypedLog(newMsg.guild, "msg_edit", e);
     });
 
-    // VOICE JOIN/LEAVE
     client.on("voiceStateUpdate", async (oldS, newS) => {
       const member = newS.member || oldS.member;
       if (!member?.guild) return;
@@ -165,7 +163,6 @@ module.exports = {
       }
     });
 
-    // BAN
     client.on("guildBanAdd", async (ban) => {
       const guild = ban.guild;
       const user = ban.user;
@@ -182,7 +179,7 @@ module.exports = {
         .setDescription(`${user.tag} (ID: \`${user.id}\`)`)
         .addFields(
           { name: "Gebannt von", value: by ? `${by} (ID: \`${by.id}\`)` : "—", inline: false },
-          { name: "Grund", value: reason || "—", inline: false }
+          { name: "Grund", value: cut(reason || "—", 1000), inline: false }
         )
         .setFooter(footer()).setTimestamp(new Date());
       await sendTypedLog(guild, "ban", e);
