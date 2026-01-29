@@ -1,44 +1,49 @@
-const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { getGuildConfig, setGuildConfig } = require("../utils/config");
+
+const EPHEMERAL = 64;
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("counting")
-    .setDescription("Counting Game verwalten")
+    .setDescription("Counting Kanal festlegen")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sub =>
-      sub.setName("set")
-        .setDescription("Counting Channel setzen")
-        .addChannelOption(opt =>
-          opt.setName("channel")
-            .setDescription("Channel für das Counting")
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-            .setRequired(true)
-        )
+    .addChannelOption(opt =>
+      opt.setName("channel")
+        .setDescription("Channel für das Counting")
+        .setRequired(true)
     )
-    .addSubcommand(sub =>
-      sub.setName("reset")
-        .setDescription("Counting zurücksetzen (Start wieder bei 1)")
+    .addBooleanOption(opt =>
+      opt.setName("reset")
+        .setDescription("Setzt den Counting Fortschritt zurück (Start wieder bei 1)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+    const channel = interaction.options.getChannel("channel");
+    const reset = interaction.options.getBoolean("reset") ?? false;
+
     const cfg = getGuildConfig(interaction.guildId);
 
-    if (sub === "set") {
-      const ch = interaction.options.getChannel("channel");
-      cfg.counting.channelId = ch.id;
+    cfg.counting = cfg.counting || {};
+    cfg.counting.channelId = channel.id;
+
+    if (reset) {
       cfg.counting.lastNumber = 0;
       cfg.counting.lastUserId = null;
-      setGuildConfig(interaction.guildId, cfg);
-      return interaction.reply({ content: `✅ Counting Channel gesetzt: ${ch}\nStart ist jetzt wieder bei **1**.`, flags: 64 });
+      cfg.counting.maxNumber = 0;
+    } else {
+      cfg.counting.lastNumber = cfg.counting.lastNumber ?? 0;
+      cfg.counting.lastUserId = cfg.counting.lastUserId ?? null;
+      cfg.counting.maxNumber = cfg.counting.maxNumber ?? cfg.counting.lastNumber ?? 0;
     }
 
-    if (sub === "reset") {
-      cfg.counting.lastNumber = 0;
-      cfg.counting.lastUserId = null;
-      setGuildConfig(interaction.guildId, cfg);
-      return interaction.reply({ content: "✅ Counting wurde zurückgesetzt. Nächste Zahl ist **1**.", flags: 64 });
-    }
+    setGuildConfig(interaction.guildId, cfg);
+
+    const msg = reset
+      ? `✅ Counting Kanal gesetzt: ${channel}\n🔁 Fortschritt wurde zurückgesetzt. Start wieder bei **1**.`
+      : `✅ Counting Kanal gesetzt: ${channel}\nAktueller Stand: **${cfg.counting.lastNumber || 0}**`;
+
+    return interaction.reply({ content: msg, flags: EPHEMERAL });
   }
 };

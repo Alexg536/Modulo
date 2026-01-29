@@ -1,44 +1,81 @@
-const { SlashCommandBuilder, ChannelType } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getGuildConfig, setGuildConfig } = require("../utils/config");
-const { respond } = require("../utils/respond");
+const { footer } = require("../utils/branding");
+
+const EPHEMERAL = 64;
+
+function panelEmbed() {
+  return new EmbedBuilder()
+    .setTitle("❓ Anonyme Fragen")
+    .setDescription(
+      "Du hast Fragen zur Community oder zu LGBTQ+ Themen?\n\n" +
+      "➡️ Klicke unten auf **🎟️ Frage einreichen**\n" +
+      "Unser Team versucht, so schnell wie möglich zu antworten."
+    )
+    .setFooter(footer())
+    .setTimestamp(new Date());
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("fragenpanel")
-    .setDescription("Panel für anonyme Fragen")
-    .addSubcommand(sub =>
-      sub.setName("set")
-        .setDescription("Panel senden und Channel speichern")
-        .addChannelOption(opt =>
-          opt.setName("channel")
-            .setDescription("Channel, wo das Panel hin soll")
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-            .setRequired(true)
-        )
-        .addChannelOption(opt =>
-          opt.setName("threadchannel")
-            .setDescription("Channel, in dem Threads erstellt werden sollen")
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-            .setRequired(true)
-        )
+    .setDescription("Fragen-Panel verwalten")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(sc =>
+      sc.setName("set")
+        .setDescription("Panel in einem Channel posten")
+        .addChannelOption(o => o.setName("channel").setDescription("Channel für das Panel").setRequired(true))
+    )
+    .addSubcommand(sc =>
+      sc.setName("remove")
+        .setDescription("Panel-Einstellungen löschen")
     ),
 
-  async execute(interaction, helpers) {
-    const panelChannel = interaction.options.getChannel("channel");
-    const threadChannel = interaction.options.getChannel("threadchannel");
-
+  async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
     const cfg = getGuildConfig(interaction.guildId);
-    cfg.question.panelChannelId = panelChannel.id;
-    cfg.question.threadChannelId = threadChannel.id;
+    cfg.panels = cfg.panels || {};
 
-    const msg = await panelChannel.send({
-      embeds: [helpers.buildPanelEmbed("question")],
-      components: [helpers.buildPanelButtons("question")]
-    });
+    if (sub === "remove") {
+      delete cfg.panels.questions;
+      setGuildConfig(interaction.guildId, cfg);
+      return interaction.reply({ content: "✅ Fragen-Panel wurde entfernt.", flags: EPHEMERAL });
+    }
 
-    cfg.question.panelMessageId = msg.id;
+    const channel = interaction.options.getChannel("channel");
+
+    if (!channel || !("send" in channel)) {
+      return interaction.reply({ content: "❌ Bitte einen Text-Channel auswählen.", flags: EPHEMERAL });
+    }
+
+    const me = interaction.guild.members.me;
+    const perms = channel.permissionsFor(me);
+    if (!perms?.has(["ViewChannel", "SendMessages", "EmbedLinks"])) {
+      return interaction.reply({
+        content: "❌ Ich brauche im Ziel-Channel: **ViewChannel**, **SendMessages**, **EmbedLinks**.",
+        flags: EPHEMERAL
+      });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("question:open")
+        .setLabel("🎟️ Frage einreichen")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const msg = await channel.send({ embeds: [panelEmbed()], components: [row] });
+
+    cfg.panels.questions = {
+      channelId: channel.id,
+      messageId: msg.id
+    };
+
     setGuildConfig(interaction.guildId, cfg);
 
-    return respond(interaction, { content: `✅ Fragen-Panel gesendet in ${panelChannel}`, flags: 64 });
+    return interaction.reply({
+      content: `✅ Fragen-Panel wurde in ${channel} gepostet.`,
+      flags: EPHEMERAL
+    });
   }
 };

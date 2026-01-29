@@ -1,47 +1,86 @@
+const { EmbedBuilder } = require("discord.js");
 const { getGuildConfig, setGuildConfig } = require("../utils/config");
+const { footer } = require("../utils/branding");
+
+function brandedEmbed(description) {
+  return new EmbedBuilder()
+    .setDescription(description)
+    .setFooter(footer())
+    .setTimestamp(new Date());
+}
 
 module.exports = {
   name: "messageCreate",
   async execute(message) {
-    if (!message.guild) return;
-    if (message.author.bot) return;
+    try {
+      if (!message.guild) return;
+      if (message.author.bot) return;
 
-    const cfg = getGuildConfig(message.guild.id);
-    const c = cfg.counting;
-    if (!c?.channelId) return;
-    if (message.channel.id !== c.channelId) return;
+      const cfg = getGuildConfig(message.guild.id);
+      const counting = cfg.counting;
 
-    const content = message.content.trim();
+      // Counting ist nicht aktiviert
+      if (!counting?.channelId) return;
 
-    // Nur reine Zahlen erlauben
-    if (!/^\d+$/.test(content)) return;
+      // Nur im Counting-Channel reagieren
+      if (message.channel.id !== counting.channelId) return;
 
-    const number = parseInt(content, 10);
-    const expected = (c.lastNumber || 0) + 1;
+      // User darf nur eine Zahl senden: exakt nur Ziffern
+      const content = message.content.trim();
 
-    // Regel 1: nicht 2x hintereinander
-    if (c.lastUserId && message.author.id === c.lastUserId) {
-      try { await message.react("❌"); } catch {}
-      return;
-    }
-
-    // Regel 2: richtige nächste Zahl?
-    if (number !== expected) {
-      // wenn Zahl schon mal dran war (<= lastNumber) -> Haken ✅
-      if (number <= (c.lastNumber || 0)) {
-        try { await message.react("✅"); } catch {}
-      } else {
-        // falsche zukünftige Zahl
-        try { await message.react("❌"); } catch {}
+      if (!/^\d+$/.test(content)) {
+        // Kein Spam: nur kurz Hinweis, aber du kannst das auch weglassen
+        const e = brandedEmbed("❌ Bitte sende **nur eine Zahl** (z.B. `1`).");
+        await message.channel.send({ embeds: [e] });
+        return;
       }
-      return;
+
+      const number = parseInt(content, 10);
+
+      // Safety: zu große Zahlen vermeiden
+      if (!Number.isSafeInteger(number) || number < 1) {
+        const e = brandedEmbed("❌ Ungültige Zahl. Starte bei `1` und zähle normal hoch.");
+        await message.channel.send({ embeds: [e] });
+        return;
+      }
+
+      const lastNumber = counting.lastNumber ?? 0;
+      const lastUserId = counting.lastUserId ?? null;
+      const expected = lastNumber + 1;
+
+      // Regel: nicht 2x hintereinander
+      if (lastUserId === message.author.id) {
+        const e = brandedEmbed(`🚫 Du darfst nicht **2 mal hintereinander** zählen, ${message.author}.`);
+        await message.channel.send({ embeds: [e] });
+        return;
+      }
+
+      // Regel: Reihenfolge muss stimmen
+      if (number !== expected) {
+        const e = brandedEmbed(`⚠️ Falsche Reihenfolge.\nErwartet war: **${expected}**`);
+        await message.channel.send({ embeds: [e] });
+        return;
+      }
+
+      // ✅ Korrekt -> reagieren + speichern
+      const maxNumber = counting.maxNumber ?? 0;
+
+      // wenn Zahl schonmal erreicht wurde -> ✅, sonst 🏆
+      if (number <= maxNumber) {
+        await message.react("✅").catch(() => {});
+      } else {
+        await message.react("🏆").catch(() => {});
+      }
+
+      counting.lastNumber = number;
+      counting.lastUserId = message.author.id;
+      counting.maxNumber = Math.max(maxNumber, number);
+
+      cfg.counting = counting;
+      setGuildConfig(message.guild.id, cfg);
+
+    } catch (err) {
+      console.error("Counting error:", err);
     }
-
-    // korrekt -> Pokal 🏆
-    c.lastNumber = number;
-    c.lastUserId = message.author.id;
-    setGuildConfig(message.guild.id, cfg);
-
-    try { await message.react("🏆"); } catch {}
   }
 };
