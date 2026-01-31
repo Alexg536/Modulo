@@ -15,12 +15,13 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
-// ✅ Command-Map
+// Commands + Handler Maps
 client.commands = new Collection();
-
-// ✅ Handler-Maps für Buttons & Dropdowns
 client.selectHandlers = new Collection();
 client.buttonHandlers = new Collection();
+
+// ✅ Speichert pro Dropdown-Auswahl (customId) optionale Overrides wie "grund"
+client.pendingMod = new Map();
 
 // Commands laden
 const commandsPath = path.join(__dirname, "src", "commands");
