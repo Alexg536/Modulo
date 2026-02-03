@@ -1,14 +1,11 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('ping')
-    .setDescription('Zeigt die Bot-Latenz'),
+    .setName("ping")
+    .setDescription("Testet ob der Bot lebt"),
 
   async execute(interaction) {
-    await interaction.reply({
-      content: `🏓 Pong! ${interaction.client.ws.ping}ms`,
-      flags: 64
-    });
-  },
+    await interaction.editReply("🏓 Pong! MODULO lebt.");
+  }
 };

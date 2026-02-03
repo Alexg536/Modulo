@@ -1,52 +1,30 @@
-const EPHEMERAL = 64;
+const { Events } = require("discord.js");
 
 module.exports = {
-  name: "interactionCreate",
+  name: Events.InteractionCreate,
   async execute(interaction) {
+    // Nur Slash Commands
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = interaction.client.commands.get(interaction.commandName);
+    if (!command) return;
+
     try {
-      // Slash Commands
-      if (interaction.isChatInputCommand()) {
-        const cmd = interaction.client.commands.get(interaction.commandName);
-        if (!cmd) return;
-
-        const heavy = ["ban", "kick", "warn", "timeout", "modtemplate"];
-        if (heavy.includes(interaction.commandName) && !interaction.deferred && !interaction.replied) {
-          await interaction.deferReply({ flags: EPHEMERAL });
-        }
-
-        await cmd.execute(interaction);
-        return;
+      // ✅ SOFORT defer → verhindert DiscordAPIError 10062
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: false });
       }
 
-      // Select Menus
-      if (interaction.isStringSelectMenu()) {
-        const handler = interaction.client.selectHandlers?.get(interaction.customId);
-        if (handler) return handler(interaction);
-      }
+      await command.execute(interaction);
 
-      // Buttons
-      if (interaction.isButton()) {
-        const handler = interaction.client.buttonHandlers?.get(interaction.customId);
-        if (handler) return handler(interaction);
-      }
+    } catch (error) {
+      console.error("❌ Command Error:", error);
 
-      // Modals (falls du später welche nutzt)
-      if (interaction.isModalSubmit()) {
-        const handler = interaction.client.modalHandlers?.get(interaction.customId);
-        if (handler) return handler(interaction);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "❌ Es ist ein Fehler aufgetreten."
+        });
       }
-    } catch (err) {
-      console.error(err);
-
-      try {
-        if (interaction.isRepliable()) {
-          if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: "❌ Da ist was gecrasht beim Command." });
-          } else {
-            await interaction.reply({ content: "❌ Da ist was gecrasht beim Command.", flags: EPHEMERAL });
-          }
-        }
-      } catch {}
     }
-  },
+  }
 };
