@@ -1,62 +1,38 @@
-const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
-const { getGuildConfig, setGuildConfig } = require("../utils/config");
-
-const LOG_TYPES = [
-  { name: "Join", value: "join" },
-  { name: "Leave", value: "leave" },
-  { name: "Role update", value: "role" },
-  { name: "Message delete", value: "msg_delete" },
-  { name: "Message edit", value: "msg_edit" },
-  { name: "Voice join", value: "voice_join" },
-  { name: "Voice leave", value: "voice_leave" },
-  { name: "Timeout", value: "timeout" },
-  { name: "Kick", value: "kick" },
-  { name: "Ban", value: "ban" },
-];
+const { SlashCommandBuilder, ChannelType } = require("discord.js");
+const { getGuild, setGuild } = require("../utils/storage");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("logchannel")
-    .setDescription("Setze pro Logtyp einen eigenen Kanal")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addStringOption(opt =>
-      opt.setName("typ")
+    .setDescription("Setzt den Log-Kanal für einen Logtyp")
+    .addStringOption(o =>
+      o.setName("typ")
         .setDescription("Welcher Logtyp?")
         .setRequired(true)
-        .addChoices(...LOG_TYPES)
+        .addChoices(
+          { name: "Join/Leave", value: "join_leave" },
+          { name: "Role Updates", value: "role_updates" },
+          { name: "Message Log", value: "message_log" },
+          { name: "Mod Actions (timeout/ban/kick)", value: "mod_actions" }
+        )
     )
-    .addChannelOption(opt =>
-      opt.setName("kanal")
-        .setDescription("Kanal für diesen Logtyp")
-        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-        .setRequired(false)
-    )
-    .addBooleanOption(opt =>
-      opt.setName("off")
-        .setDescription("Logtyp deaktivieren")
-        .setRequired(false)
+    .addChannelOption(o =>
+      o.setName("kanal")
+        .setDescription("In welchen Kanal sollen die Logs?")
+        .setRequired(true)
+        .addChannelTypes(ChannelType.GuildText)
     ),
 
   async execute(interaction) {
-    const typ = interaction.options.getString("typ");
-    const kanal = interaction.options.getChannel("kanal");
-    const off = interaction.options.getBoolean("off") || false;
+    const typ = interaction.options.getString("typ", true);
+    const kanal = interaction.options.getChannel("kanal", true);
 
-    const cfg = getGuildConfig(interaction.guildId);
+    const current = getGuild(interaction.guild.id) || {};
+    const updated = setGuild(interaction.guild.id, {
+      ...current,
+      logChannels: { ...(current.logChannels || {}), [typ]: kanal.id }
+    });
 
-    if (off) {
-      delete cfg.logChannels[typ];
-      setGuildConfig(interaction.guildId, cfg);
-      return interaction.reply({ content: `✅ Logtyp **${typ}** ist jetzt **aus**.`, flags: 64 });
-    }
-
-    if (!kanal) {
-      const current = cfg.logChannels[typ] ? `<#${cfg.logChannels[typ]}>` : "—";
-      return interaction.reply({ content: `ℹ️ Aktueller Kanal für **${typ}**: ${current}\nSetze ihn mit: /logchannel typ:${typ} kanal:#dein-kanal`, flags: 64 });
-    }
-
-    cfg.logChannels[typ] = kanal.id;
-    setGuildConfig(interaction.guildId, cfg);
-    return interaction.reply({ content: `✅ Logtyp **${typ}** → ${kanal}`, flags: 64 });
+    await interaction.editReply(`✅ Logtyp **${typ}** sendet jetzt nach ${kanal}.`);
   }
 };

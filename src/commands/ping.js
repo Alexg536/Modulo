@@ -1,11 +1,8 @@
 const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("ping")
-    .setDescription("Testet ob der Bot lebt"),
-
+  data: new SlashCommandBuilder().setName("ping").setDescription("Test Command"),
   async execute(interaction) {
-    await interaction.editReply("🏓 Pong! MODULO lebt.");
+    await interaction.editReply("🏓 Pong! MODULO fresh & clean.");
   }
 };

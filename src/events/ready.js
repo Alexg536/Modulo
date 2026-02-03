@@ -1,10 +1,9 @@
-const { startTippsScheduler } = require("../utils/tippsScheduler");
+const { Events } = require("discord.js");
 
 module.exports = {
-  name: "ready",
+  name: Events.ClientReady,
   once: true,
   execute(client) {
-    console.log(`✅ Eingeloggt als ${client.user.tag}`);
-    startTippsScheduler(client);
-  },
+    console.log(`✅ MODULO online als ${client.user.tag}`);
+  }
 };
