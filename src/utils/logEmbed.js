@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require("discord.js");
+const { createEmbed } = require("./embedFactory");
 
 function userThumb(user) {
   try {
@@ -9,17 +9,11 @@ function userThumb(user) {
 }
 
 function makeLogEmbed({ title, description, user, color = 0x2b2d31, fields = [] }) {
-  const e = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description || null)
-    .setColor(color)
-    .setTimestamp();
+  const e = createEmbed({ title, description, color, fields });
 
   // ✅ oben rechts: User-Bild
   const thumb = userThumb(user);
   if (thumb) e.setThumbnail(thumb);
-
-  if (fields?.length) e.addFields(fields);
 
   return e;
 }
